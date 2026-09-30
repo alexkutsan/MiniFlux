@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "generatedAt": "2026-09-30T08:25:11.755Z",
+  "instructionHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "startup": {
+    "command": "docker compose -f docker-compose.ci.yml up -d --build",
+    "port": 8080,
+    "healthCheckPath": "/healthcheck",
+    "context": "Repo is Miniflux v2, a Go/Gorilla Mux feed-reader backend (main.go at repo root, internal/ package). No existing compose wired the app itself (only devcontainer db and contrib/docker-compose examples referencing the published image), so I added docker-compose.ci.yml at the repo root that builds the local source via packaging/docker/alpine/Dockerfile (multi-stage `make miniflux` build) and runs it alongside a postgres:15 dependency service, wired together on the compose network. Env vars: DATABASE_URL pointing at the postgres service, RUN_MIGRATIONS=1, CREATE_ADMIN=1 with throwaway admin/test12"
+  },
+  "auth": {
+    "authObjectId": "gYfRcLRce2qjtPm115M59D",
+    "protectedResource": {
+      "method": "GET",
+      "url": "/settings"
+    },
+    "context": "Verified session authentication using POST /login."
+  },
+  "scanPrep": {
+    "context": "Summary: Audited the Miniflux (Go/Gorilla Mux) codebase and live app; found no rate limiting, account lockout, CAPTCHA, aggressive session timeouts, IP allow/blocklists, or WAF/request-filtering anywhere (login handler, UI/API middleware, server middleware, config options), so no changes were required or made.\nRecovery guidance (security controls): Miniflux has no built-in throttling layer: internal/ui/login_check.go performs password check + session creation with no attempt counting/lockout; internal/ui/middleware.go and internal/api/middleware.go only handle session/CSRF/CORS/API-key/basic-auth, no rate limiter; internal/http/server/middleware.go only logs and sets HSTS; internal/config/options.go has no rate/limit/lockout/captcha keys (only unrelated polling/cleanup 'limit' options). Verified live by sending 11 rapid POST /login requests with the same session cookie, CSRF token (fetched via GET /), and admin/test123 credentials — all returned HTTP 302 to /unread with fresh MinifluxUserSessionID cookies, no 429/403/error bodies. CSRF token is stored server-side per app-session cookie (internal/storage/session.go, rand.Text() at session creation) and does NOT rotate per request, so a multistep auth flow can fetch it once from the login page body/DOM (hidden input name=\"csrf\") and replay it with the session cookie — CSRF was left intact per instructions. If a future scan still encounters 429s, they would have to originate from an external reverse proxy/load balancer not present in docker-compose.ci.yml (only the miniflux app + postgres db services exist), so check any upstream infra placed in front of localhost:8080.\nRecovery guidance (2FA/MFA): Investigated the Go/Gorilla-Mux codebase (Miniflux) for twoFactor/2fa/mfa/totp/otp/authenticator/verification. Found only WebAuthn support (internal/ui/webauthn.go, internal/storage/webauthn.go), which is an opt-in security-key registration feature exposed via config.Opts.WebAuthn() and surfaced in settings (countWebAuthnCerts) — it is never required during login. Checked internal/ui/login_check.go: checkLogin() validates username/password via h.store.CheckPassword and immediately calls h.store.CreateUserSessionFromUsername to create an authenticated session — there is no post-login MFA/TOTP challenge, no user status field (no PENDING/INACTIVE/LOCKED concept in internal/model/user.go), and no forced WebAuthn step. Therefore the test user cannot be blocked by 2FA in this app. If a future scan still reports 401/403 on protected endpoints, the cause is unrelated to 2FA (e.g. bad credentials, missing/expired session cookie, or CSRF/rate-limiting handled elsewhere) — verify with: curl -i -c cookies.txt -d 'csrf=...&username=<user>&password=<pass>' http://localhost:8080/checklogin then curl -b cookies.txt http://localhost:8080/v1/me to confirm 200 JSON."
+  }
+}
