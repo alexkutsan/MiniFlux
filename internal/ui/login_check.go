@@ -6,6 +6,7 @@ package ui // import "miniflux.app/v2/internal/ui"
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"miniflux.app/v2/internal/config"
 	"miniflux.app/v2/internal/http/cookie"
@@ -16,7 +17,6 @@ import (
 	"miniflux.app/v2/internal/ui/form"
 	"miniflux.app/v2/internal/ui/session"
 	"miniflux.app/v2/internal/ui/view"
-	"miniflux.app/v2/internal/urllib"
 )
 
 func (h *handler) checkLogin(w http.ResponseWriter, r *http.Request) {
@@ -96,9 +96,11 @@ func (h *handler) checkLogin(w http.ResponseWriter, r *http.Request) {
 		config.Opts.BasePath(),
 	))
 
-	if redirectURL != "" && urllib.IsRelativePath(redirectURL) {
-		html.Redirect(w, r, redirectURL)
-		return
+	if redirectURL != "" {
+		if parsedURL, err := url.Parse(redirectURL); err == nil && !parsedURL.IsAbs() {
+			html.Redirect(w, r, redirectURL)
+			return
+		}
 	}
 
 	html.Redirect(w, r, route.Path(h.router, user.DefaultHomePage))
